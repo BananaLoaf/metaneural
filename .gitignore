@@ -3,7 +3,7 @@
 
 template\.egg-info/
 
-template/__pycache__/
+metaneural/__pycache__/
 
 dist/
 
