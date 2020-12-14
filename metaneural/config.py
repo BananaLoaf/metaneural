@@ -25,11 +25,23 @@ class ConfigBuilder:
     def __init__(self):
         self.__schemes__ = {}
 
-        for field, scheme, value in self.get_field_scheme_value():
-            setattr(self, field, None)
-            setattr(self.__class__, field, self.set_defaults(scheme))
+        # Move schemes to __schemes__ and set all fields to None
+        for field in self.get_fields():
+            scheme = getattr(self, field)
 
-    def get_attrs(self) -> str:
+            setattr(self, field, None)
+            self.__schemes__[field] = self.set_defaults(scheme)
+
+    @staticmethod
+    def set_defaults(scheme: dict) -> dict:
+        """Set all default values for a scheme"""
+        scheme.setdefault(ARGS, [])
+        scheme.setdefault(KWARGS, {})
+        scheme.setdefault(SAVE, True)
+        return scheme
+
+    def get_fields(self) -> str:
+        """Fetches all fields"""
         all_vars = {**vars(self.__class__)}
         for cls in self.__class__.__bases__:
             if cls.__name__ == ConfigBuilder.__name__:
@@ -41,19 +53,45 @@ class ConfigBuilder:
             if not (attr.startswith("__") and attr.endswith("__")) and not isinstance(value, Callable):
                 yield attr
 
-    @staticmethod
-    def set_defaults(scheme: dict) -> dict:
-        """Set all default values for a scheme"""
-        scheme.setdefault(SAVE, True)
-        return scheme
-
     def get_field_scheme_value(self) -> Tuple[str, dict, Any]:
         """Fetches all available fields, schemes and values"""
-        for attr in self.get_attrs():
-            yield attr, getattr(self.__class__, attr), getattr(self, attr)
+        for field in self.get_fields():
+            yield field, getattr(self.__class__, field), self.__schemes__[field]
+
+    ################################################################
+    def save(self, path: Path):
+        """Dump json representation into the file"""
+        self._cleanup()
+        with path.open("w") as file:
+            json.dump(self.to_json(), file, indent=4)
 
     @classmethod
+    def load(cls, path: Path):
+        """Load config from json file"""
+        self = cls()
+        self._cleanup()
+
+        with path.open("r") as file:
+            data = json.load(file)
+
+        for field, in self.get_fields():
+            try:
+                setattr(self, field, data[field])
+            except KeyError:
+                raise KeyError(f"Config is missing required key '{field}'")
+
+        return self
+
+    def to_json(self) -> dict:
+        data = {}
+        for field, scheme, value in self.get_field_scheme_value():
+            data[field] = value
+        return data
+
+    ################################################################
+    @classmethod
     def cli(cls, description: str = ""):
+        """Creates command line arguments parser"""
         self = cls()
 
         ################################################################
@@ -69,14 +107,19 @@ class ConfigBuilder:
 
             # Create group and set as target for new argument
             if GROUP_NAME in scheme.keys():
-                groups.setdefault(scheme[GROUP_NAME], parser.add_argument_group(scheme[GROUP_NAME]))
-                target_parser = groups[scheme[GROUP_NAME]]
+                group_name = scheme[GROUP_NAME]
+
+                groups.setdefault(group_name, parser.add_argument_group(group_name))
+                target_parser = groups[group_name]
 
             else:
                 target_parser = parser
 
-            if scheme[ARGS][0].startswith("-"):
-                scheme[KWARGS]["dest"] = field
+            try:
+                if scheme[ARGS][0].startswith("-"):
+                    scheme[KWARGS]["dest"] = field
+            except IndexError:
+                pass
             target_parser.add_argument(*scheme[ARGS], **scheme[KWARGS])
 
         ################################################################
@@ -86,33 +129,6 @@ class ConfigBuilder:
             setattr(self, field, value)
 
         return self
-
-    @classmethod
-    def load(cls, path: Path):
-        self = cls()
-        self._cleanup()
-
-        with path.open("r") as file:
-            data = json.load(file)
-
-        for field, scheme, value in self.get_field_scheme_value():
-            try:
-                setattr(self, field, data[field])
-            except KeyError:
-                raise KeyError(f"Config is missing required key '{field}'")
-
-        return self
-
-    def save(self, path: Path):
-        self._cleanup()
-        with path.open("w") as file:
-            json.dump(self.to_json(), file, indent=4)
-
-    def to_json(self) -> dict:
-        data = {}
-        for field, scheme, value in self.get_field_scheme_value():
-            data[field] = getattr(self, field)
-        return data
 
     def __repr__(self):
         return self.to_json()
@@ -126,6 +142,7 @@ class ConfigBuilder:
         for field in to_remove:
             delattr(self, field)
             delattr(self.__class__, field)
+            del self.__schemes__[field]
 
 
 class DefaultConfig(ConfigBuilder):
@@ -134,11 +151,11 @@ class DefaultConfig(ConfigBuilder):
 
     Examples:
     name = {GROUP_NAME: "Model",                                       # Not required
-            ARGS: ["--name"],                                          # Required
-            KWARGS: {TYPE: str, REQUIRED: True, HELP: "Model name"}},  # Required
-            SAVE: False                                                # Saving in config.json, gets wiped on save (default: True)
+            ARGS: ["--name"],
+            KWARGS: {TYPE: str, REQUIRED: True, HELP: "Model name"}},
+            SAVE: False                                                # If save in json, (default: True)
 
-    # Does not provide cli param, just exists
+    # Does not provide cli param, just exists, can be saved
     step = {CONSTANT: 0,
             SAVE; False}
 
@@ -156,46 +173,64 @@ class DefaultConfig(ConfigBuilder):
     name = {ARGS: ["--name"],
             KWARGS: {TYPE: str, REQUIRED: True, HELP: "Model name"}}
 
+    ################################################################
     # Device params
-    use_tpu = {GROUP_NAME: "Device params",
+    use_tpu = {GROUP_NAME: "Device",
                ARGS: ["--use-tpu"],
                KWARGS: {ACTION: "store_true",
-                        HELP: "Use Google Cloud TPU, if True, --gpu param is ignored (default: %(default)s)"}}
-    tpu_name = {GROUP_NAME: "Device params",
+                        HELP: "Use Google Cloud TPU. If True, --gpu is ignored (default: %(default)s)"}}
+    tpu_name = {GROUP_NAME: "Device",
                 ARGS: ["--tpu-name"],
                 KWARGS: {TYPE: str, DEFAULT: None,
                          HELP: "Google Cloud TPU name, if None and flag --use-tpu is set, will try to detect automatically (default: %(default)s)"}}
-    devices = {GROUP_NAME: "Device params",
+    devices = {GROUP_NAME: "Device",
                ARGS: ["--gpu"],
-               KWARGS: {TYPE: str, DEFAULT: None,
-                        HELP: "Available GPUs: {}, list devices with , as delimiter"}}  # Format however is needed
-    xla_jit = {GROUP_NAME: "Device params",
+               KWARGS: {NARGS: "+",
+                        TYPE: str,
+                        DEFAULT: [],
+                        HELP: "Available GPUs: {}"}}  # Formatted at runtime
+    xla_jit = {GROUP_NAME: "Device",
                ARGS: ["--xla-jit"],
                KWARGS: {ACTION: "store_true",
                         HELP: "XLA Just In Time compilation, https://www.tensorflow.org/xla (default: %(default)s)"}}
 
+    ################################################################
     # Training params
     epoch = {CONSTANT: 0}
-    epochs = {GROUP_NAME: "Training params",
+    epochs = {GROUP_NAME: "Training",
               ARGS: ["-e", "--epochs"],
               KWARGS: {TYPE: int,
                       REQUIRED: True,
                       HELP: "Epochs (default: %(default)s)"}}
-    batch_size = {GROUP_NAME: "Dataloader params",
+    steps_per_epoch = {GROUP_NAME: "Training",
+                       ARGS: ["-se", "--steps-per-epoch"],
+                       KWARGS: {TYPE: int,
+                                DEFAULT: None,
+                                HELP: "Steps per epoch, if None the epoch will run until the train dataset is exhausted (default: %(default)s)"}}
+    ################################################################
+    test_split = {GROUP_NAME: "Training",
+                  ARGS: ["-ts"],
+                  KWARGS: {TYPE: float,
+                           DEFAULT: 0.1,
+                           HELP: "Test split (default: %(default)s)"}}
+    test_steps = {GROUP_NAME: "Training",
+                  ARGS: ["-ts", "--test-steps"],
+                  KWARGS: {TYPE: int,
+                           DEFAULT: None,
+                           HELP: "Test steps per test, if None the epoch will run until the test dataset is exhausted (default: %(default)s)"}}
+    ################################################################
+    batch_size = {GROUP_NAME: "Training",
                   ARGS: ["-b", "--batch-size"],
                   KWARGS: {TYPE: int, DEFAULT: 1, HELP: "Batch size (default: %(default)s)"}}
-    q_aware_train = {GROUP_NAME: "Training params",
+    q_aware_train = {GROUP_NAME: "Training",
                      ARGS: ["-qat", "--quantization-aware-training"],
                      KWARGS: {NARGS: "+",
                               TYPE: int,
                               DEFAULT: [0],
                               HELP: "Quantization aware training for chosen models, https://www.tensorflow.org/model_optimization/guide/quantization/training (default: %(default)s)"}}
-    test_split = {GROUP_NAME: "Training params",
-                  ARGS: ["-ts"],
-                  KWARGS: {TYPE: float,
-                           DEFAULT: 0.1,
-                           HELP: "Test split (default: %(default)s)"}}
 
+    ################################################################
+    # Other
     checkpoint_freq = {GROUP_NAME: "Other",
                        ARGS: ["-cf", "--checkpoint-freq"],
                        KWARGS: {TYPE: int,
@@ -223,15 +258,7 @@ class ResumeConfig(ConfigBuilder):
                                  HELP: "Checkpoint epoch to load, None for latest checkpoint (default: %(default)s)"}}
 
 
-class ConverterConfig(ConfigBuilder):
-    path = {ARGS: ["path"],
-            KWARGS: {TYPE: str,
-                     HELP: "Path to run directory"}}
-    checkpoint_epoch = {ARGS: ["--ckpt-epoch"],
-                        KWARGS: {TYPE: int,
-                                 DEFAULT: None,
-                                 HELP: "Checkpoint epoch to load, None for latest checkpoint (default: %(default)s)"}}
-
+class ConverterConfig(ResumeConfig):
     dyn_range_q = {ARGS: ["--dyn-range-q"],
                    KWARGS: {ACTION: "store_true",
                             HELP: "Post-training dynamic range quantization, https://www.tensorflow.org/lite/performance/post_training_quantization"}}
@@ -249,4 +276,8 @@ class ConverterConfig(ConfigBuilder):
 
 
 if __name__ == '__main__':
+    import tensorflow as tf
+
+    GPU_DEVICES = [dev.name for dev in tf.config.list_logical_devices("CPU") + tf.config.list_logical_devices("XLA_CPU")]
+    DefaultConfig.devices[KWARGS][HELP] = DefaultConfig.devices[KWARGS][HELP].format(GPU_DEVICES)
     cfg = DefaultConfig.cli()
