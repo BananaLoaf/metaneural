@@ -90,7 +90,7 @@ class ConfigBuilder:
 
     ################################################################
     @classmethod
-    def cli(cls, description: str = ""):
+    def cli(cls, description: str):
         """Creates command line arguments parser"""
         self = cls()
 
@@ -178,21 +178,18 @@ class DefaultConfig(ConfigBuilder):
     use_tpu = {GROUP_NAME: "Device",
                ARGS: ["--use-tpu"],
                KWARGS: {ACTION: "store_true",
-                        HELP: "Use Google Cloud TPU. If True, --gpu is ignored (default: %(default)s)"}}
+                        HELP: "Use Google Cloud TPU. If True, --dev is ignored (default: %(default)s)"}}
     tpu_name = {GROUP_NAME: "Device",
                 ARGS: ["--tpu-name"],
-                KWARGS: {TYPE: str, DEFAULT: None,
+                KWARGS: {TYPE: str,
+                         DEFAULT: None,
                          HELP: "Google Cloud TPU name, if None and flag --use-tpu is set, will try to detect automatically (default: %(default)s)"}}
     devices = {GROUP_NAME: "Device",
-               ARGS: ["--gpu"],
+               ARGS: ["--dev"],
                KWARGS: {NARGS: "+",
                         TYPE: str,
-                        DEFAULT: [],
-                        HELP: "Available GPUs: {}"}}  # Formatted at runtime
-    xla_jit = {GROUP_NAME: "Device",
-               ARGS: ["--xla-jit"],
-               KWARGS: {ACTION: "store_true",
-                        HELP: "XLA Just In Time compilation, https://www.tensorflow.org/xla (default: %(default)s)"}}
+                        DEFAULT: ["/device:CPU:0", ],
+                        HELP: "Available GPUs: {}, available CPUs: {}"}}
 
     ################################################################
     # Training params
@@ -221,7 +218,9 @@ class DefaultConfig(ConfigBuilder):
     ################################################################
     batch_size = {GROUP_NAME: "Training",
                   ARGS: ["-b", "--batch-size"],
-                  KWARGS: {TYPE: int, DEFAULT: 1, HELP: "Batch size (default: %(default)s)"}}
+                  KWARGS: {TYPE: int,
+                           DEFAULT: 1,
+                           HELP: "Batch size (default: %(default)s)"}}
     q_aware_train = {GROUP_NAME: "Training",
                      ARGS: ["-qat", "--quantization-aware-training"],
                      KWARGS: {NARGS: "+",
@@ -278,6 +277,6 @@ class ConverterConfig(ResumeConfig):
 if __name__ == '__main__':
     import tensorflow as tf
 
-    GPU_DEVICES = [dev.name for dev in tf.config.list_logical_devices("CPU") + tf.config.list_logical_devices("XLA_CPU")]
+    GPU_DEVICES = [dev.name for dev in tf.config.list_logical_devices("GPU") + tf.config.list_logical_devices("XLA_GPU")]
     DefaultConfig.devices[KWARGS][HELP] = DefaultConfig.devices[KWARGS][HELP].format(GPU_DEVICES)
     cfg = DefaultConfig.cli()
