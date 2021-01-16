@@ -8,3 +8,5 @@ metaneural/__pycache__/
 dist/
 
 build/
+
+venv/

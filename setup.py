@@ -11,7 +11,16 @@ with open("README.md", "r") as file:
 # https://docs.python.org/2/distutils/setupscript.html
 setup(name=PACKAGE_NAME,
       version=__version__,
-      install_requires=[],
+      install_requires=[
+          "tensorflow == 2.3.1",
+          "tensorflow-model-optimization == 0.5.0",
+          "pathlib",
+          "pydot"
+      ],
+      dependency_links=[
+          "https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-linux_x86_64.whl; platform_system == 'Linux'; platform_machine == 'x86_64'",
+          "https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-win_amd64.whl; platform_system == 'Windows'; platform_machine == 'x86_64'"
+      ],
       packages=find_packages(),
       # entry_points={
       #     "console_scripts": [

@@ -1,3 +1,3 @@
-# setup-template
+# metaneural
 
-This line is a description
+Description
