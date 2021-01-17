@@ -1,6 +1,6 @@
 from typing import Tuple, Any, Callable
 from argparse import ArgumentParser
-import json
+import yaml
 
 from pathlib import Path
 
@@ -60,19 +60,19 @@ class ConfigBuilder:
 
     ################################################################
     def save(self, path: Path):
-        """Dump json representation into the file"""
+        """Dump yaml representation into the file"""
         self._cleanup()
         with path.open("w") as file:
-            json.dump(self.to_json(), file, indent=4)
+            yaml.dump(self.to_dict(), file, indent=4)
 
     @classmethod
     def load(cls, path: Path):
-        """Load config from json file"""
+        """Load config from yaml file"""
         self = cls()
         self._cleanup()
 
         with path.open("r") as file:
-            data = json.load(file)
+            data = yaml.load(file)
 
         for field, in self.get_fields():
             try:
@@ -82,11 +82,14 @@ class ConfigBuilder:
 
         return self
 
-    def to_json(self) -> dict:
+    def to_dict(self) -> dict:
         data = {}
         for field, scheme, value in self.get_field_scheme_value():
             data[field] = value
         return data
+
+    def __repr__(self):
+        return self.to_dict()
 
     ################################################################
     @classmethod
@@ -129,9 +132,6 @@ class ConfigBuilder:
             setattr(self, field, value)
 
         return self
-
-    def __repr__(self):
-        return self.to_json()
 
     def _cleanup(self):
         to_remove = []

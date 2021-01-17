@@ -15,7 +15,8 @@ setup(name=PACKAGE_NAME,
           "tensorflow == 2.3.1",
           "tensorflow-model-optimization == 0.5.0",
           "pathlib",
-          "pydot"
+          "pydot",
+          "PyYAML"
       ],
       dependency_links=[
           "https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-linux_x86_64.whl; platform_system == 'Linux'; platform_machine == 'x86_64'",

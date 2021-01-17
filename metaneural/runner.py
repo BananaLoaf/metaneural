@@ -179,7 +179,7 @@ class DefaultRunner:
         prefix = self.checkpoint_path.joinpath(str(self.config.epoch))
         prefix.mkdir(parents=True, exist_ok=True)
 
-        self.config.save(prefix.joinpath("config.json"))
+        self.config.save(prefix.joinpath("config.yaml"))
         self.checkpoint.write(prefix.joinpath("model"))
 
     @with_strategy

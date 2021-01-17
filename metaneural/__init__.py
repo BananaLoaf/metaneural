@@ -2,6 +2,8 @@ PACKAGE_NAME = "metaneural"
 __version__ = "1.0"
 
 
+import tensorflow as tf
+
 from metaneural.config import *
 from metaneural.runner import DefaultRunner
 
