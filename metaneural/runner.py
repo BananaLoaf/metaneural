@@ -112,14 +112,11 @@ class DefaultRunner:
             print("\nStopping...")
 
     @classmethod
-    def resume(cls, config: DefaultConfig, resume_config: ResumeConfig):
+    def resume(cls, config: DefaultConfig, run_directory: Path, checkpoint_path: Path):
         self = cls(config=config,
-                   run_directory=Path(resume_config.path))
-        self.restore(step=resume_config.checkpoint_epoch)
+                   run_directory=run_directory)
+        self.restore(checkpoint_path=checkpoint_path)
         self.summary()
-
-        if resume_config.checkpoint_epoch is not None:
-            config.epoch = resume_config.checkpoint_epoch
 
         try:
             self.train(resume=True)
@@ -127,15 +124,16 @@ class DefaultRunner:
             print("\nStopping...")
 
     @classmethod
-    def convert(cls, config: Type[DefaultConfig], converter_config: ConverterConfig):
+    def convert(cls, config: DefaultConfig, converter_config: ConverterConfig,
+                run_directory: Path, checkpoint_path: Path):
         self = cls(config=config,
-                   run_directory=Path(converter_config.path))
-        self.restore(step=converter_config.checkpoint_epoch)
+                   run_directory=run_directory)
+        self.restore(checkpoint_path=checkpoint_path)
 
-        print("Saving models")
+        print("Saving model")
         self.save_model()
 
-        print("Converting models")
+        print("Converting model")
         self.convert_model(converter_config)
 
     ################################################################
@@ -183,13 +181,8 @@ class DefaultRunner:
         self.checkpoint.write(prefix.joinpath("model"))
 
     @with_strategy
-    def restore(self, step: Optional[int] = None):
-        if step is None:
-            checkpoint_path = self.checkpoint_manager.latest_checkpoint
-        else:
-            checkpoint_path = str(self.checkpoint_manager._directory.joinpath(f"model-{step}"))
-
-        self.checkpoint.restore(checkpoint_path)
+    def restore(self, checkpoint_path: Path):
+        self.checkpoint.restore(str(checkpoint_path / "model"))
 
     def save_model(self):
         self._save_model(self.model, "model")
@@ -211,6 +204,7 @@ class DefaultRunner:
                        int_float_q: bool,
                        int_q: Optional[str]):
         # TFLite
+        print("TFLite conversion")
         converter = tflite.TFLiteConverter.from_keras_model(model)
         with self.model_path.joinpath(f"{name}.tflite").open("wb") as file:
             file.write(converter.convert())
@@ -218,6 +212,7 @@ class DefaultRunner:
         # TFLite quantizised
         # Dynamic range quantization
         if dyn_range_q:
+            print("Dynamic range quantization")
             converter = tflite.TFLiteConverter.from_keras_model(model)
             converter.optimizations = [tflite.Optimize.DEFAULT]
             with self.model_path.joinpath(f"{name}.dyn-range.qtflite").open("wb") as file:
@@ -225,6 +220,7 @@ class DefaultRunner:
 
         # Float16 quantization
         if f16_q:
+            print("Float16 quantization")
             converter = tflite.TFLiteConverter.from_keras_model(model)
             converter.optimizations = [tflite.Optimize.DEFAULT]
             converter.target_spec.supported_types = [tf.float16]
@@ -236,6 +232,7 @@ class DefaultRunner:
         else:
             # Full integer quantization, integer with float fallback
             if int_float_q:
+                print("Full integer quantization, integer with float fallback")
                 converter = tflite.TFLiteConverter.from_keras_model(model)
                 converter.optimizations = [tflite.Optimize.DEFAULT]
                 converter.repr_dataset = repr_dataset
@@ -244,6 +241,7 @@ class DefaultRunner:
 
             # Full integer quantization, integer only
             if int_q is not None:
+                print("Full integer quantization, integer only")
                 converter = tflite.TFLiteConverter.from_keras_model(model)
                 converter.optimizations = [tflite.Optimize.DEFAULT]
                 converter.repr_dataset = repr_dataset
