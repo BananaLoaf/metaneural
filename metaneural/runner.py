@@ -84,20 +84,20 @@ class DefaultRunner:
     ################################################################
     @with_strategy
     def init_model(self) -> Tuple[
-        Union[keras.Model, Tuple[keras.Model, ...]],
-        Union[keras.optimizers.Optimizer, Tuple[keras.optimizers.Optimizer, ...]]]:
+        keras.Model,
+        Union[keras.optimizers.Optimizer, Dict[str, tf.keras.optimizers.Optimizer]]]:
         raise NotImplementedError
-
-    def init_dataset(self) -> tf.data.Dataset:
-        raise NotImplementedError
-
-    def init_repr_dataset(self) -> Optional[Generator]:
-        return None
 
     def quantize_model(self):
         if bool(self.config.q_aware_train[0]):
             import tensorflow_model_optimization as tfmot
             self.model = tfmot.quantization.keras.quantize_model(self.model)
+
+    def init_dataset(self) -> Union[tf.data.Dataset, Dict[str, tf.data.Dataset]]:
+        raise NotImplementedError
+
+    def init_repr_dataset(self) -> Optional[Generator]:
+        return None
 
     ################################################################
     @classmethod
@@ -137,28 +137,47 @@ class DefaultRunner:
         self.convert_model(converter_config)
 
     ################################################################
-    def get_callbacks(self) -> Tuple[keras.callbacks.Callback, ...]:
+    def get_callbacks(self) -> List[keras.callbacks.Callback]:
+        def inc_step():
+            self.config.step += 1
+
+        def inc_epoch():
+            self.config.epoch += 1
+
+        config_update_cb = keras.callbacks.LambdaCallback(
+            on_batch_end=lambda batch, logs: inc_step(),
+            on_epoch_end=lambda epoch, logs: inc_epoch())
+        checkpoint_cb = tf.keras.callbacks.LambdaCallback(
+            on_epoch_begin=lambda epoch, logs: self.snap() if epoch % self.config.checkpoint_freq == 0 else None,
+            on_train_end=lambda logs: self.snap())
         tensorboard_cb = tf.keras.callbacks.TensorBoard(
             log_dir=self.run_path,
             histogram_freq=self.config.test_freq,
             update_freq="batch")
-        epoch_update_cb = keras.callbacks.LambdaCallback(
-            on_epoch_end=lambda epoch, logs: setattr(self.config, "epoch", epoch + 1))
-        checkpoint_cb = tf.keras.callbacks.LambdaCallback(
-            on_epoch_begin=lambda epoch, logs: self.snap() if epoch % self.config.checkpoint_freq == 0 else None)
 
-        return tensorboard_cb, epoch_update_cb, checkpoint_cb
+        return [config_update_cb, checkpoint_cb, tensorboard_cb]
 
     def train(self, resume: bool = False):
         raise NotImplementedError
 
     ################################################################
     # Saving, snapping, etc
+    def snap(self):
+        prefix = self.checkpoint_path / str(self.config.epoch)
+        prefix.mkdir(parents=True, exist_ok=True)
+
+        self.config.save(prefix / "config.yaml")
+        self.checkpoint.write(str(prefix / "model"))
+
+    @with_strategy
+    def restore(self, checkpoint_path: Path):
+        self.checkpoint.restore(str(checkpoint_path / "model"))
+
     def summary(self, plot: bool = False):
         self._summary(self.model, "model", plot)
 
     def _summary(self, model: tf.keras.Model, name: str, plot: bool,
-                 show_shapes: bool = False,
+                 show_shapes: bool = True,
                  show_layer_names: bool = True,
                  rankdir: str = "TB",
                  expand_nested: bool = False,
@@ -172,17 +191,6 @@ class DefaultRunner:
                                       rankdir=rankdir,
                                       expand_nested=expand_nested,
                                       dpi=dpi)
-
-    def snap(self):
-        prefix = self.checkpoint_path.joinpath(str(self.config.epoch))
-        prefix.mkdir(parents=True, exist_ok=True)
-
-        self.config.save(prefix.joinpath("config.yaml"))
-        self.checkpoint.write(prefix.joinpath("model"))
-
-    @with_strategy
-    def restore(self, checkpoint_path: Path):
-        self.checkpoint.restore(str(checkpoint_path / "model"))
 
     def save_model(self):
         self._save_model(self.model, "model")

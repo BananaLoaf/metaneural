@@ -56,7 +56,7 @@ class ConfigBuilder:
     def get_field_scheme_value(self) -> Tuple[str, dict, Any]:
         """Fetches all available fields, schemes and values"""
         for field in self.get_fields():
-            yield field, getattr(self.__class__, field), self.__schemes__[field]
+            yield field, self.__schemes__[field], getattr(self, field)
 
     ################################################################
     def save(self, path: Path):
@@ -74,7 +74,7 @@ class ConfigBuilder:
         with path.open("r") as file:
             data = yaml.load(file)
 
-        for field, in self.get_fields():
+        for field in self.get_fields():
             try:
                 setattr(self, field, data[field])
             except KeyError:
@@ -189,10 +189,11 @@ class DefaultConfig(ConfigBuilder):
                KWARGS: {NARGS: "+",
                         TYPE: str,
                         DEFAULT: ["/device:CPU:0", ],
-                        HELP: "Available GPUs: {}, available CPUs: {}"}}
+                        HELP: "Available GPUs: {}, available CPUs: {} (default: %(default)s)"}}
 
     ################################################################
     # Training params
+    step = {CONSTANT: 0}
     epoch = {CONSTANT: 0}
     epochs = {GROUP_NAME: "Training",
               ARGS: ["-e", "--epochs"],
@@ -206,12 +207,12 @@ class DefaultConfig(ConfigBuilder):
                                 HELP: "Steps per epoch, if None the epoch will run until the train dataset is exhausted (default: %(default)s)"}}
     ################################################################
     test_split = {GROUP_NAME: "Training",
-                  ARGS: ["-ts"],
+                  ARGS: ["--test-split"],
                   KWARGS: {TYPE: float,
                            DEFAULT: 0.1,
                            HELP: "Test split (default: %(default)s)"}}
     test_steps = {GROUP_NAME: "Training",
-                  ARGS: ["-ts", "--test-steps"],
+                  ARGS: ["--test-steps"],
                   KWARGS: {TYPE: int,
                            DEFAULT: None,
                            HELP: "Test steps per test, if None the epoch will run until the test dataset is exhausted (default: %(default)s)"}}
@@ -230,21 +231,16 @@ class DefaultConfig(ConfigBuilder):
 
     ################################################################
     # Other
-    checkpoint_freq = {GROUP_NAME: "Other",
-                       ARGS: ["-cf", "--checkpoint-freq"],
-                       KWARGS: {TYPE: int,
-                                REQUIRED: True,
-                                HELP: "Checkpoint frequency in epochs (default: %(default)s)"}}
-    sample_freq = {GROUP_NAME: "Other",
-                   ARGS: ["-sf", "--sample-freq"],
-                   KWARGS: {TYPE: int,
-                            REQUIRED: True,
-                            HELP: "Sampling frequency in batches (default: %(default)s)"}}
     test_freq = {GROUP_NAME: "Other",
                  ARGS: ["-tf", "--test-freq"],
                  KWARGS: {TYPE: int,
                           REQUIRED: True,
                           HELP: "Test frequency in epochs (default: %(default)s)"}}
+    checkpoint_freq = {GROUP_NAME: "Other",
+                       ARGS: ["-cf", "--checkpoint-freq"],
+                       KWARGS: {TYPE: int,
+                                REQUIRED: True,
+                                HELP: "Checkpoint frequency in epochs (default: %(default)s)"}}
 
 
 class ResumeConfig(ConfigBuilder):
@@ -272,11 +268,3 @@ class ConverterConfig(ResumeConfig):
     f16_q = {ARGS: ["--f16-q"],
              KWARGS: {ACTION: "store_true",
                       HELP: "Post-training float16 quantization"}}
-
-
-if __name__ == '__main__':
-    import tensorflow as tf
-
-    GPU_DEVICES = [dev.name for dev in tf.config.list_logical_devices("GPU") + tf.config.list_logical_devices("XLA_GPU")]
-    DefaultConfig.devices[KWARGS][HELP] = DefaultConfig.devices[KWARGS][HELP].format(GPU_DEVICES)
-    cfg = DefaultConfig.cli()

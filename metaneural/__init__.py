@@ -24,10 +24,10 @@ def resume(config_class: Type[DefaultConfig], runner_class: Type[DefaultRunner],
 
     if resume_config.checkpoint_epoch is None:
         print("Loading latest checkpoint")
-        checkpoint_path = sorted(Path(resume_config.path, "checkpoint").glob("*"), key=lambda p: p.stat().st_mtime_ns)[-1]
+        checkpoint_path = sorted(Path(resume_config.path, "checkpoint").glob("*"), key=lambda p: int(p.name), reverse=True)[0]
     else:
-        print(f"Loading checkpoint {resume_config.checkpoint_epoch}")
-        checkpoint_path = Path(resume_config.path, "checkpoint") / str(resume_config.checkpoint_epoch)
+        print(f"Loading epoch {resume_config.checkpoint_epoch} checkpoint")
+        checkpoint_path = Path(resume_config.path, "checkpoint").glob(f"*{str(resume_config.checkpoint_epoch)}").__next__()
 
     config = config_class.load(checkpoint_path / "config.yaml")
     runner_class.resume(config=config,
